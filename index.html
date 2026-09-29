@@ -3,31 +3,20 @@
 <head>
 <style>
 body { background: #1a1a1a; color: #0f0; font-family: monospace; padding: 20px; }
-h1 { color: #fff; }
 button { background: #333; color: #0f0; border: 1px solid #0f0; padding: 10px; margin: 5px; cursor: pointer; }
-button:hover { background: #0f0; color: #000; }
 input { background: #000; color: #0f0; border: 1px solid #333; padding: 5px; margin: 5px; width: 150px; }
 #log { background: #000; border: 1px solid #333; height: 200px; overflow-y: scroll; padding: 10px; margin-top: 20px; white-space: pre-wrap; }
 .group { margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
-.error { color: #ff0000; }
 </style>
 </head>
 <body>
-<h1>GHOST CONSOLE v3</h1>
+<h1>GHOST CONSOLE v3 (STABLE)</h1>
 <div id="status">System Status: INITIALIZING...</div>
 
 <div class="group">
-  <h3>Console Execution</h3>
-  <input id="consoleInput" placeholder="e.g. list_resources">
-  <button onclick="execAction('console')">EXECUTE</button>
-  <button onclick="execAction('nuke')">NUKE ALL</button>
-</div>
-
-<div class="group">
-  <h3>Lag Switch</h3>
+  <h3>Lag All Players</h3>
   <input id="lagDur" type="number" value="5">
-  <button onclick="execAction('lagAll')">LAG ALL PLAYERS</button>
-  <!-- Removed "Lag Single" because architecture routes global lag via client events -->
+  <button onclick="execAction('lagAll')">EXECUTE LAG ALL</button>
 </div>
 
 <div class="group">
@@ -37,49 +26,29 @@ input { background: #000; color: #0f0; border: 1px solid #333; padding: 5px; mar
   <button onclick="execAction('kick')">EXECUTE KICK</button>
 </div>
 
-<div class="group">
-  <h3>Give Money</h3>
-  <input id="moneyId" placeholder="Player ID" type="number">
-  <input id="moneyAmt" placeholder="Amount" type="number" value="1000000">
-  <button onclick="execAction('money')">EXECUTE PAYMENT</button>
-</div>
-
 <div id="log"></div>
 
 <script>
 const BRIDGE_URL = 'https://ghost-bridge-5626.onrender.com';
 const TOKEN = 'GHOST_2025';
 
-function log(msg, isError = false) {
+function log(msg) {
     const el = document.getElementById('log');
     const time = new Date().toLocaleTimeString();
-    el.innerHTML += `<span class="${isError ? 'error' : ''}">[${time}] ${msg}</span><br>`;
+    el.innerHTML += `[${time}] ${msg}<br>`;
     el.scrollTop = el.scrollHeight;
 }
 
 function execAction(action) {
     let body = { action: action };
 
-    // VALIDATION LOGIC
-    if (action === 'console') {
-        body.input = document.getElementById('consoleInput').value.trim();
-        if (!body.input) return log("ERROR: Console input required", true);
+    if (action === 'lagAll') {
+        body.duration = parseInt(document.getElementById('lagDur').value) || 5;
     } else if (action === 'kick') {
         const rawId = document.getElementById('kickId').value;
         body.targetId = parseInt(rawId, 10);
         body.kickMsg = document.getElementById('kickMsg').value || "Suck my Nuts Bitch";
-        if (isNaN(body.targetId)) return log(`ERROR: Invalid Player ID "${rawId}". Must be a number.`, true);
-    } else if (action === 'money') {
-        const rawId = document.getElementById('moneyId').value;
-        const rawAmt = document.getElementById('moneyAmt').value;
-        body.targetId = parseInt(rawId, 10);
-        body.amount = parseInt(rawAmt, 10);
-        if (isNaN(body.targetId)) return log(`ERROR: Invalid Player ID "${rawId}".`, true);
-        if (isNaN(body.amount)) return log(`ERROR: Invalid Amount "${rawAmt}".`, true);
-    } else if (action === 'lagAll') {
-        // No specific inputs needed for global lag
-    } else if (action === 'nuke') {
-        // No specific inputs needed
+        if (isNaN(body.targetId)) return log("ERROR: Invalid Player ID", true);
     }
 
     fetch(`${BRIDGE_URL}/api/exec`, {
@@ -87,24 +56,18 @@ function execAction(action) {
         headers: { 'Content-Type': 'application/json', 'X-Ghost-Token': TOKEN },
         body: JSON.stringify(body)
     }).then(r => r.json()).then(d => {
-        if (d.status === 'queued') {
-            log(`SUCCESS: Queued [${action}]`);
-        } else {
-            log(`RESPONSE: ${JSON.stringify(d)}`, true);
-        }
-    }).catch(e => log(`NETWORK ERROR: ${e.message}`, true));
+        log(`RESPONSE: ${JSON.stringify(d)}`);
+    }).catch(e => log(`ERROR: ${e.message}`));
 }
 
-// Poll status
 setInterval(() => {
-    fetch(`${BRIDGE_URL}/api/stats`, {
-        headers: { 'X-Ghost-Token': TOKEN }
-    }).then(r => r.json()).then(d => {
-        document.getElementById('status').innerText = `System Status: LINK ACTIVE | Players: ${d.players || 'Unknown'}`;
+    // Just check if bridge is up
+    fetch(`${BRIDGE_URL}/`, { method: 'HEAD' }).then(() => {
+        document.getElementById('status').innerText = "System Status: LINK ACTIVE";
     }).catch(() => {
         document.getElementById('status').innerText = "System Status: CONNECTION LOST";
     });
-}, 3000);
+}, 5000);
 </script>
 </body>
 </html>
