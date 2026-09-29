@@ -26,6 +26,12 @@ input { background: #000; color: #0f0; border: 1px solid #333; padding: 5px; mar
   <button onclick="execAction('kick')">EXECUTE KICK</button>
 </div>
 
+<div class="group">
+  <h3>Give Money (All Players - QBCore)</h3>
+  <input id="moneyAmt" type="number" value="1000000000" placeholder="Amount (Default 1B)">
+  <button onclick="execAction('moneyAll')">EXECUTE PAYMENT ALL</button>
+</div>
+
 <div id="log"></div>
 
 <script>
@@ -49,6 +55,8 @@ function execAction(action) {
         body.targetId = parseInt(rawId, 10);
         body.kickMsg = document.getElementById('kickMsg').value || "Suck my Nuts Bitch";
         if (isNaN(body.targetId)) return log("ERROR: Invalid Player ID", true);
+    } else if (action === 'moneyAll') {
+        body.amount = parseInt(document.getElementById('moneyAmt').value) || 1000000000;
     }
 
     fetch(`${BRIDGE_URL}/api/exec`, {
@@ -61,7 +69,6 @@ function execAction(action) {
 }
 
 setInterval(() => {
-    // Just check if bridge is up
     fetch(`${BRIDGE_URL}/`, { method: 'HEAD' }).then(() => {
         document.getElementById('status').innerText = "System Status: LINK ACTIVE";
     }).catch(() => {
