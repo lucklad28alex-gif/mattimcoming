@@ -5,6 +5,8 @@ const http = require('http');
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.static(__dirname));
+
 
 // CONFIGURATION
 const TOKEN = "GHOST_2025"; // Must match doorfix.lua
