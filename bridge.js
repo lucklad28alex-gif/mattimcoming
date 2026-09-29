@@ -19,6 +19,8 @@ const TOKEN = "GHOST_2025"; // Must match doorfix.lua
 const FIVEM_HOST = '103.1.215.150'; // Dynamically set by handshake
 const FIVEM_PORT = 30150;    // Default FiveM HTTP port
 let LAST_TELEMETRY = {};      // Stores last received stats
+let CURRENT_FIVEM_IP = '103.1.215.150'; // Default to your known IP
+
 
 // ENDPOINT 1: HANDSHAKE (From doorfix.lua)
 // The Lua script POSTs its own IP here upon startup
